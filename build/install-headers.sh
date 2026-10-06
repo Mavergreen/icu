@@ -27,4 +27,4 @@ H="$INC/unicode/uconfig.h"
 NEW="$(mktemp "${TMPDIR:-/tmp}/uconfig.XXXXXX")"
 trap 'rm -f "$NEW"' EXIT
 cat "$BUILD/uconfig.h.prepend" "$H" > "$NEW"
-mv "$NEW" "$H"
+cat "$NEW" > "$H"

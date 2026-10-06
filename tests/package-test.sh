@@ -4,7 +4,9 @@
 #          The pkg must be named icu-<version>.pkg and its icu component must carry exactly the dylib,
 #          the include/unicode headers that sit beside it (uconfig.h defining U_DISABLE_RENAMING 1), ICU's
 #          LICENSE and the README under share/doc/icu, the mavergreen.plist manifest, and the updater
-#          app (Sparkle framework aside) with its LaunchAgent; the packaged dylib must be
+#          app (Sparkle framework aside) with its LaunchAgent;
+#          every file in it is world-readable and every directory world-searchable (a non-root compile must
+#          be able to read the headers); the packaged dylib must be
 #          byte-identical to the one that was tested.
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -23,6 +25,11 @@ C="$T/x/icu-component.pkg"
 a_file_exists "the product archive carries the icu component" "$C/Bom"
 lsbom -s -f "$C/Bom" | sed 's|^\./||' > "$T/bom"
 a_eq 1 "$(grep -c 'icu-updater\.app/Contents/Frameworks/Sparkle\.framework/Versions/A/Sparkle$' "$T/bom")" "the Sparkle binary is in the payload"
+lsbom "$C/Bom" | sed 's|^\./||' > "$T/modes"
+a_eq "" "$(awk -F'\t' '{ m = $2; o = substr(m, length(m)) + 0 }
+  m ~ /^10/ && int(o / 4) % 2 == 0 { print $1 " " m }
+  m ~ /^4/ && o % 2 == 0 { print $1 " " m }' "$T/modes")" "every payload file is world-readable and every directory world-searchable"
+a_eq "100755" "$(awk -F'\t' '$1 == "usr/local/mavergreen/icu/lib/libicucore.dylib" { print $2 }' "$T/modes")" "the dylib keeps the mode it was built with"
 grep -v '/Sparkle\.framework/' "$T/bom" | LC_ALL=C sort > "$T/payload"
 a_file_exists "the built include dir has uconfig.h" "$(dirname "$DYLIB")/include/unicode/uconfig.h"
 (cd "$(dirname "$DYLIB")/include" && find unicode -type f | sed 's|^|usr/local/mavergreen/icu/include/|') > "$T/headers"
