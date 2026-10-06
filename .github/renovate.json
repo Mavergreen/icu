@@ -1,4 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>Mavergreen/shipyard"]
+  "extends": ["github>Mavergreen/shipyard"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "ICU release tags are release-<ver> since 78.1; prerelease, icu4x and cldr tags never match.",
+      "managerFilePatterns": ["/^UPSTREAM_VERSION$/"],
+      "matchStrings": ["^(?<currentValue>\\S+)\\s*$"],
+      "depNameTemplate": "unicode-org/icu",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^release-(?<version>\\d+\\.\\d+(?:\\.\\d+)?)$"
+    }
+  ]
 }

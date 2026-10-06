@@ -20,6 +20,11 @@ icu_build_root() {
   printf '%s\n' "${MAVERICKS_BUILD_ROOT:-${TMPDIR:-/tmp}/mm-build}/$(basename "$MAVERICKS_ROOT")-icu-$_ibr_mode"
 }
 
+icu_src_dir() {
+  _isd_root="$(icu_build_root)" || return $?
+  printf '%s\n' "$_isd_root/src/icu/source"
+}
+
 icu_major() {
   _im_v="$(upstream_version)"
   printf '%s\n' "${_im_v%%.*}"
