@@ -29,3 +29,21 @@ icu_major() {
   _im_v="$(upstream_version)"
   printf '%s\n' "${_im_v%%.*}"
 }
+
+icu_first_gnu_make() {
+  for _fg_c in "$@"; do
+    _fg_first="$("$_fg_c" --version 2>/dev/null | { IFS= read -r _l || true; printf '%s' "$_l"; })"
+    case "$_fg_first" in *"GNU Make"*) printf '%s\n' "$_fg_c"; return 0 ;; esac
+  done
+  return 1
+}
+
+icu_require_gnu_make() {
+  _igm_msg='GNU make is required to build ICU (on 10.9: install the Command Line Tools)'
+  if [ -n "${MAKE:-}" ]; then
+    icu_first_gnu_make "$MAKE" >/dev/null || { echo "$_igm_msg" >&2; exit 2; }
+  else
+    MAKE="$(icu_first_gnu_make gmake /usr/bin/make make)" || { echo "$_igm_msg" >&2; exit 2; }
+  fi
+  export MAKE
+}
