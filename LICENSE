@@ -11,5 +11,5 @@ Authors: Amitai Schleier <schmonz-web-git@schmonz.com>
 
 The shipped libicucore.dylib is not covered by the dedication above. It is
 ICU, under ICU's own LICENSE (the Unicode License v3), which the .pkg
-installs beside it. It also contains LLVM's libc++ and libc++abi, under
-Apache-2.0 WITH LLVM-exception.
+installs at /usr/local/mavergreen/icu/share/doc/icu/LICENSE. It also
+contains LLVM's libc++ and libc++abi, under Apache-2.0 WITH LLVM-exception.

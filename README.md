@@ -6,19 +6,22 @@ Upstream [ICU](https://icu.unicode.org/), built for Mac OS X 10.9 as one `libicu
 
 ## Install
 
-The `.pkg` installs `/usr/local/mavergreen/icu/lib/libicucore.dylib` (install name the same path, version 76.1, depending only on `/usr/lib/libSystem.B.dylib`) and ICU's `LICENSE` beside it.
+The `.pkg` installs `/usr/local/mavergreen/icu/lib/libicucore.dylib` (install name the same path, version 76.1, depending only on `/usr/lib/libSystem.B.dylib`) and ICU's `LICENSE` at `/usr/local/mavergreen/icu/share/doc/icu/LICENSE`. It also installs an updater app and a per-user LaunchAgent (`dev.mavergreen.icu-updatecheck`).
 
 ## How to build
 
-Cross (any recent Mac, or Linux with the shipyard toolchain):
+    sh build/build.sh
 
-    shipyard-cmake --preset cross && shipyard-cmake --build --preset cross
+This builds ICU and links the dylib, then prints its path on stdout. Set `ICU_MODE=native` (on Mac OS X 10.9) or `ICU_MODE=cross`; `MAVERICKS_BUILD_ROOT` optionally moves the build root. Output goes under `$TMPDIR/mm-build/<checkout>-icu-<mode>/out/`.
 
-Native (Mac OS X 10.9):
+Cross mode needs an Apple Silicon Mac: it uses `pkgutil` and the arm64-only clang22-cross toolchain. It does not run on Linux or on an Intel Mac.
 
-    shipyard-cmake --preset native && shipyard-cmake --build --preset native
+ICU's build needs GNU make. On 10.9 that comes from the Command Line Tools, which provide it as `/usr/bin/make`; run that one. This is a declared exception to "no Command Line Tools needed", until the Mavergreen/gmake follow-up ships a family GNU make.
 
-ICU's build needs GNU make. On 10.9 that comes from the Command Line Tools, which provide it as `/usr/bin/make`; run that one. This is a declared exception to "no Command Line Tools needed", until the Mavergreen/gmake follow-up ships a family GNU make. Builds go out of tree, under `$MAVERICKS_BUILD_ROOT` or `$TMPDIR/mm-build`.
+The updater and the package go through CMake and the packaging script:
+
+    shipyard-cmake -DICU_BUILD_UPDATER=ON ...
+    sh packaging/build-pkg.sh ...
 
 ## Disclaimer
 
