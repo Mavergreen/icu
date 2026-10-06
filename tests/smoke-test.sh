@@ -10,6 +10,7 @@ ROOT="$(icu_build_root)"
 DYLIB="${ICU_DYLIB:-$ROOT/out/libicucore.dylib}"
 CLANG22="$ROOT/clang22"
 INC="$(dirname "$DYLIB")/include"
+[ -d "$INC" ] || INC="$(dirname "$DYLIB")/../include"
 [ -f "$DYLIB" ] && [ -x "$CLANG22/bin/clang" ] && [ -f "$INC/unicode/uconfig.h" ] || { echo "smoke-test: no dylib, clang22 or shipped headers under $ROOT; run build/build.sh" >&2; exit 77; }
 a_eq "" "$(find "$INC" -type f ! -perm -004)" "every shipped header is world-readable"
 t_tmp T
