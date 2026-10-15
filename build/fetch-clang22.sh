@@ -3,6 +3,7 @@
 set -eu
 MAVERICKS_ROOT="${MAVERICKS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"; export MAVERICKS_ROOT
 . "$MAVERICKS_ROOT/build/lib.sh"
+. "$SHIPYARD_SCRIPTS/mavericks_fetch.sh"
 
 TAG="$(tr -d '\r\n\t ' < "$MAVERICKS_ROOT/components/clang22/version")"
 [ -n "$TAG" ] || { echo "fetch-clang22: components/clang22/version is empty" >&2; exit 1; }
@@ -32,7 +33,7 @@ cleanup() {
   rm -rf "$SUMS" "$EXP" "$NEW" "$DL"/*.$$
 }
 trap cleanup EXIT
-curl -fsSL -o "$SUMS" "$BASE/SHA256SUMS" || { echo "fetch-clang22: cannot fetch $BASE/SHA256SUMS" >&2; exit 1; }
+shipyard_curl "$BASE/SHA256SUMS" "$SUMS" || { echo "fetch-clang22: cannot fetch $BASE/SHA256SUMS" >&2; exit 1; }
 
 digest_of() {
   tr -d '\r' < "$SUMS" | awk -v a="$1" '{n=$2; sub(/^\*/,"",n)} n==a {print $1; exit}' | tr 'A-F' 'a-f'
@@ -50,8 +51,7 @@ done
 [ -n "$ASSET" ] || { echo "fetch-clang22: neither $FIRST nor $SECOND listed in $BASE/SHA256SUMS" >&2; exit 1; }
 
 if [ ! -f "$DL/$ASSET" ]; then
-  curl -fsSL -o "$DL/$ASSET.$$" "$BASE/$ASSET" || { echo "fetch-clang22: cannot fetch $BASE/$ASSET" >&2; exit 1; }
-  mv "$DL/$ASSET.$$" "$DL/$ASSET"
+  shipyard_curl "$BASE/$ASSET" "$DL/$ASSET" || { echo "fetch-clang22: cannot fetch $BASE/$ASSET" >&2; exit 1; }
 fi
 got="$(shasum -a 256 "$DL/$ASSET" | awk '{print $1}')"
 if [ "$got" != "$want" ]; then

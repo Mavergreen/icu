@@ -5,6 +5,7 @@
 set -eu
 MAVERICKS_ROOT="${MAVERICKS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"; export MAVERICKS_ROOT
 . "$MAVERICKS_ROOT/build/lib.sh"
+. "$SHIPYARD_SCRIPTS/mavericks_fetch.sh"
 
 VERSION="${1:-$(upstream_version)}"
 BASE="${ICU_RELEASE_BASE:-https://github.com/unicode-org/icu/releases/download}/release-$VERSION"
@@ -15,7 +16,7 @@ mkdir -p "$DL"
 
 SUMS="$DL/SHASUM512.txt.$$"
 trap 'rm -f "$SUMS" "$DL/$ASSET.$$"' EXIT
-curl -fsSL -o "$SUMS" "$BASE/SHASUM512.txt" || { echo "fetch-icu: cannot fetch $BASE/SHASUM512.txt" >&2; exit 1; }
+shipyard_curl "$BASE/SHASUM512.txt" "$SUMS" || { echo "fetch-icu: cannot fetch $BASE/SHASUM512.txt" >&2; exit 1; }
 want="$(tr -d '\r' < "$SUMS" | awk -v a="$ASSET" '{n=$2; sub(/^\*/,"",n)} n==a {print $1; exit}' | tr 'A-F' 'a-f')"
 case "$want" in
   *[!0-9a-f]*|"") want="" ;;
@@ -23,8 +24,7 @@ esac
 [ "${#want}" -eq 128 ] || { echo "fetch-icu: $ASSET not listed in SHASUM512.txt" >&2; exit 1; }
 
 if [ ! -f "$DL/$ASSET" ]; then
-  curl -fsSL -o "$DL/$ASSET.$$" "$BASE/$ASSET" || { echo "fetch-icu: cannot fetch $BASE/$ASSET" >&2; exit 1; }
-  mv "$DL/$ASSET.$$" "$DL/$ASSET"
+  shipyard_curl "$BASE/$ASSET" "$DL/$ASSET" || { echo "fetch-icu: cannot fetch $BASE/$ASSET" >&2; exit 1; }
 fi
 got="$(shasum -a 512 "$DL/$ASSET" | awk '{print $1}')"
 if [ "$got" != "$want" ]; then
