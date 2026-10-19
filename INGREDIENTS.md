@@ -19,6 +19,7 @@ Everything baked into what ICU for Mavericks ships, and how a change to it reach
 
 - rosetta:tests/smoke-test.sh: compiles `tests/smoke/icu-smoke.c` and executes it against the shipped x86_64 `libicucore.dylib`, which the arm64 CI runner can only do translated by Rosetta; it cannot run natively there. CI runs it, it is not skipped; native 10.9 runs it natively. Reconsider when it can move to an x86_64 host (the 10.9 box or the Mavericks VM runner), at the latest before macOS 28 removes Rosetta.
 - rosetta:.github/workflows/release.yml: the release job runs on an Apple Silicon (arm64) runner and primes Rosetta ("Ensure this runner can run x86_64 (Rosetta)") so `tests/smoke-test.sh` can execute the shipped x86_64 `libicucore.dylib` before it ships. It cannot run natively there. The build itself runs before the prime and nothing in it is translated, which `tests/rosetta-free-test.sh` checks. CI runs it, it is not skipped; native 10.9 runs it natively. Reconsider when it can move to an x86_64 host (the 10.9 box or the Mavericks VM runner), at the latest before macOS 28 removes Rosetta.
+- on-target: no 10.9 acceptance job yet; exit: a release.yml job on Mavergreen/mavericks-vm@v1 that installs this run's pkg in the guest and runs what it ships, which publish needs
 
 ## Link notes
 
