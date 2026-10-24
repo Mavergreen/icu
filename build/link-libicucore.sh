@@ -29,5 +29,5 @@ SDK="$(sh "$SHIPYARD/fetch_sdk.sh")"
   -current_version "$ICU_DYLIB_VERSION" \
   -Wl,-force_load,"$LIBDIR/libicui18n.a" -Wl,-force_load,"$LIBDIR/libicuuc.a" \
   -Wl,-force_load,"$LIBDIR/libicudata.a" \
-  "$CLANG22/lib/libc++.a" "$CLANG22/lib/libc++abi.a" -Wl,-dead_strip \
+  "$CLANG22/lib/libc++.a" "$CLANG22/lib/librecaulk.a" -lc++abi -Wl,-dead_strip \
   -Wl,-exported_symbols_list,"$EXPORTS" -o "$OUT"

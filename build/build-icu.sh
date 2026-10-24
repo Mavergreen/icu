@@ -32,7 +32,7 @@ fi
 
 SDK="$(sh "$SHIPYARD/fetch_sdk.sh")"
 FL="--no-default-config --target=x86_64-apple-macos10.9 -mmacosx-version-min=10.9 -isysroot $SDK"
-CF="$FL -isystem $CLANG22/include/mavericks-compat"
+CF="$FL -isystem $CLANG22/include/mavericks-compat -isystem $CLANG22/include/recaulk"
 
 (
   cd "$ROOT/target"
@@ -41,7 +41,7 @@ CF="$FL -isystem $CLANG22/include/mavericks-compat"
   AR="$CLANG22/bin/llvm-ar" RANLIB="$CLANG22/bin/llvm-ranlib" \
   CFLAGS="$CF" CXXFLAGS="$CF" \
   LDFLAGS="$FL --ld-path=$CLANG22/bin/ld64.lld -nostdlib++" \
-  LIBS="$CLANG22/lib/libc++.a $CLANG22/lib/libc++abi.a" \
+  LIBS="$CLANG22/lib/libc++.a $CLANG22/lib/librecaulk.a -lc++abi" \
     sh "$SRC/runConfigureICU" macOS $COMMON $EXTRA
   "$MAKE" -j"$JOBS"
 ) >&2
