@@ -5,7 +5,8 @@ The build reproduces Wowfunhappy's recipe, `icu_wrapper_build.md` in
 with three differences:
 
 - the install name is absolute (`/usr/local/mavergreen/icu/lib/libicucore.dylib`), not `@loader_path`-relative;
-- libc++ and libc++abi are linked statically and hidden, not shipped beside it with `@loader_path`;
+- libc++ is linked statically and hidden, not shipped beside it with `@loader_path`, and libc++abi is the
+  system's `/usr/lib/libc++abi.dylib`, as clang22 links every C++ program;
 - the exports come from an export list (`symbols.txt` is checked against it), not from whatever the link leaves visible.
 
 `symbols.txt` is ICU's public C API, extracted from ICU's own headers. The first release was
