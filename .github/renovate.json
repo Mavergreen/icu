@@ -20,5 +20,6 @@
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-mavericks\\.(?<build>\\d+)$"
     }
-  ]
+  ],
+  "gitIgnoredAuthors": ["342268518+mavergreen-pins-bot[bot]@users.noreply.github.com"]
 }
