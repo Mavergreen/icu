@@ -11,6 +11,8 @@ if [ "$(uname -s)" = Linux ]; then SC="$(command -v cmake)" || { echo "build-upd
 else SC="$(command -v shipyard-cmake || echo /usr/local/mavergreen/bin/shipyard-cmake)"; fi
 SY="$(dirname "$SHIPYARD_SCRIPTS")"
 CL="$(sh "$MAVERICKS_ROOT/build/fetch-clang22.sh")"
+LIPO="$CL/bin/llvm-lipo"; OTOOL="$CL/bin/llvm-otool"; NM="$CL/bin/llvm-nm"; STRINGS="$CL/bin/llvm-strings"
+export LIPO OTOOL NM STRINGS
 W="$(icu_build_root)"
 rm -rf "$W/updater"
 "$SC" -S "$MAVERICKS_ROOT" -B "$W/updater" -DCMAKE_TOOLCHAIN_FILE="$SY/MavericksToolchain.cmake" \
