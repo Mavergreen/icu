@@ -2,7 +2,7 @@ name: release
 
 on:
   push:
-    branches: [main]
+    branches-ignore: ['renovate/**']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -25,180 +25,219 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
-    runs-on: macos-26
-    timeout-minutes: 120
+  ver:
+    runs-on: ubuntu-latest
     outputs:
-      ver: ${{ steps.ver.outputs.ver }}
-      publish: ${{ steps.ver.outputs.publish }}
+      version: ${{ steps.ver.outputs.full }}
+      publish: ${{ steps.ver.outputs.release }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Install mavericks-shipyard
-        uses: Mavergreen/shipyard/.github/actions/install@v1
-
-      - name: Record the toolchain
-        run: |
-          clang --version
-          xcodebuild -version
-
-      - name: Record the pre-build tree
-        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
-
-      - name: Version + publish decision
-        id: ver
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - id: ver
         env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           LOCAL_RELEASE: ${{ inputs.local_release }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          mode=auto
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && [ "$LOCAL_RELEASE" = true ]; then mode=local; fi
+          mode="$(sh "$SHIPYARD_SCRIPTS/release-mode.sh")"
           out="$(sh build/version.sh "$mode")"
           full="$(printf '%s\n' "$out" | sed -n 's/^FULL=//p')"
           rel="$(printf '%s\n' "$out" | sed -n 's/^RELEASE=//p')"
-          pub=no
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
-            pub="$rel"
-          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-            if [ "$mode" = local ] || [ "$rel" = yes ]; then
-              pub=yes
-            else
-              digest="$(sh "$SHIPYARD_SCRIPTS/release-state.sh")"
-              answer="$(sh "$SHIPYARD_SCRIPTS/release-needed.sh" --digest "$digest" --version "$full")"
-              echo "release-needed: $answer"
-              if [ "$answer" = PUBLISH ]; then
-                pub=yes
-                out="$(sh build/version.sh local)"
-                full="$(printf '%s\n' "$out" | sed -n 's/^FULL=//p')"
-              fi
-            fi
-          fi
-          printf '%s\n' "$full" > VERSION
-          { echo "ver=$full"; echo "publish=$pub"; } >> "$GITHUB_OUTPUT"
-          echo "version=$full publish=$pub"
+          [ -n "$full" ] || { echo "::error::version.sh gave no FULL= line: $out"; exit 1; }
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            push:refs/heads/main) : ;;
+            workflow_dispatch:*)
+              if [ "$mode" = auto ] && [ "$rel" != yes ]; then
+                digest="$(sh "$SHIPYARD_SCRIPTS/release-state.sh")"
+                answer="$(sh "$SHIPYARD_SCRIPTS/release-needed.sh" --digest "$digest" --version "$full" --repo "$GITHUB_REPOSITORY")"
+                echo "release-needed: $answer"
+                if [ "$answer" = PUBLISH ]; then
+                  out="$(sh build/version.sh local)"
+                  full="$(printf '%s\n' "$out" | sed -n 's/^FULL=//p')"
+                  rel=yes
+                fi
+              fi ;;
+            *) rel=no ;;
+          esac
+          { echo "full=$full"; echo "release=$rel"; } >> "$GITHUB_OUTPUT"
+          echo "version=$full publish=$rel"
 
-      - name: Cross-build libicucore.dylib (before the Rosetta prime)
+  build:
+    needs: ver
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: Mavergreen/shipyard/.github/actions/install@v1
+      - name: Build out of tree
+        run: echo "MAVERICKS_BUILD_ROOT=$RUNNER_TEMP/mm-build" >> "$GITHUB_ENV"
+      - name: The pkg test reads its payload with cpio
+        run: command -v cpio || { sudo apt-get update -qq && sudo apt-get install -y -qq cpio; }
+      - name: Pin the version the ver job resolved
+        run: printf '%s\n' "${{ needs.ver.outputs.version }}" > VERSION
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+      - name: Cross-build libicucore.dylib
         run: |
           set -eu
           dylib="$(sh build/build.sh)"
           [ -f "$dylib" ] || { echo "::error::build.sh did not print a dylib path: $dylib"; exit 1; }
           echo "DYLIB=$dylib" >> "$GITHUB_ENV"
-
-      - name: Locate the build
-        run: echo "BUILD=${TMPDIR:-/tmp}/mm-build/$(basename "$PWD")-cross" >> "$GITHUB_ENV"
-
-      - name: Ensure this runner can run x86_64 (Rosetta)
+      - name: Build the updater
         run: |
           set -eu
-          arch -x86_64 /usr/bin/true 2>/dev/null \
-            || sudo softwareupdate --install-rosetta --agree-to-license
-          arch -x86_64 /usr/bin/true
-
-      - name: Run the repo's tests
-        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh"
-
-      - name: The smoke and dylib-shape tests must run, not skip
-        run: sh tests/smoke-test.sh && sh tests/dylib-shape-test.sh
-
-      - name: Check the pinned ingredients
-        run: sh "$SHIPYARD_SCRIPTS/check-ingredient-pins.sh"
-
-      - name: Configure and build the updater
-        run: |
-          shipyard-cmake --preset cross -DICU_BUILD_UPDATER=ON
-          shipyard-cmake --build --preset cross
-
+          app="$(sh build/build-updater.sh "${{ needs.ver.outputs.version }}")"
+          echo "APP=$app" >> "$GITHUB_ENV"
       - name: Package the .pkg
-        env:
-          VER: ${{ steps.ver.outputs.ver }}
         run: |
           set -eu
-          pkg="$(sh packaging/build-pkg.sh "$BUILD/icu-updater.app" "$DYLIB" "$VER" "$BUILD/dist")"
+          pkg="$(sh packaging/build-pkg.sh "$APP" "$DYLIB" "${{ needs.ver.outputs.version }}" dist)"
           [ -f "$pkg" ] || { echo "::error::build-pkg.sh did not print a pkg path: $pkg"; exit 1; }
           echo "PKG=$pkg" >> "$GITHUB_ENV"
-
-      - name: The package yields exactly the tested dylib
-        run: sh tests/package-test.sh "$PKG" "$DYLIB"
-
+      - name: Every host-agnostic test runs, and none skips
+        run: sh "$SHIPYARD_SCRIPTS/run-repo-tests.sh" --strict-host
+      - name: Ingredient pins are well declared
+        run: sh "$SHIPYARD_SCRIPTS/check-ingredient-pins.sh"
       - name: Release notes
-        env:
-          VER: ${{ steps.ver.outputs.ver }}
         run: |
           set -eu
-          sh "$SHIPYARD_SCRIPTS/release-notes.sh" --tag "$VER" --version "$VER" \
-            --product ICU --min-os 10.9.5 --out "$BUILD/dist/RELEASE_NOTES.md"
-
+          V="${{ needs.ver.outputs.version }}"
+          sh "$SHIPYARD_SCRIPTS/release-notes.sh" --tag "$V" --version "$V" \
+            --product ICU --min-os 10.9.5 --out dist/RELEASE_NOTES.md
       - name: Record the declared state in the notes
-        if: steps.ver.outputs.publish == 'yes'
         run: |
           set -eu
           digest="$(sh "$SHIPYARD_SCRIPTS/release-state.sh")"
-          sh "$SHIPYARD_SCRIPTS/release-state-record.sh" --notes-file "$BUILD/dist/RELEASE_NOTES.md" --digest "$digest"
-
-      - name: Unsigned stand-in feeds (never published)
-        if: steps.ver.outputs.publish != 'yes'
-        env:
-          VER: ${{ steps.ver.outputs.ver }}
-        run: sh "$SHIPYARD_SCRIPTS/stand-in-feeds.sh" "$BUILD/dist" "$VER"
-
-      - name: EdDSA-sign the .pkg + write icu.xml
-        if: steps.ver.outputs.publish == 'yes'
+          sh "$SHIPYARD_SCRIPTS/release-state-record.sh" --notes-file dist/RELEASE_NOTES.md --digest "$digest"
+      - name: clang22's Mach-O readers, for the steps that read the pkg
+        run: |
+          set -eu
+          CL="$(sh build/fetch-clang22.sh)"
+          { echo "LIPO=$CL/bin/llvm-lipo"; echo "OTOOL=$CL/bin/llvm-otool"; echo "NM=$CL/bin/llvm-nm"; } >> "$GITHUB_ENV"
+      - name: Sign the pkg and write its feed
+        if: needs.ver.outputs.publish == 'yes'
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
-          VER: ${{ steps.ver.outputs.ver }}
         run: |
           set -eu
-          printenv SPARKLE_PRIVATE_KEY | grep -q . || { echo "::error::SPARKLE_PRIVATE_KEY secret not set"; exit 1; }
-          sh "$SHIPYARD_SCRIPTS/sign_and_appcast.sh" \
-            --product icu --feed-dir "$BUILD/dist" \
-            --channel-title "ICU for Mavericks" --version "$VER" \
-            --pkg-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/$VER/$(basename "$PKG")" \
-            --notes-file "$BUILD/dist/RELEASE_NOTES.md" --pkg "$PKG" --min-os 10.9.5
-
+          printenv SPARKLE_PRIVATE_KEY | grep -q . || { echo "::error::SPARKLE_PRIVATE_KEY is not visible to this repo"; exit 1; }
+          V="${{ needs.ver.outputs.version }}"
+          sh "$SHIPYARD_SCRIPTS/sign_and_appcast.sh" --product icu --feed-dir dist \
+            --channel-title "ICU for Mavericks" --version "$V" \
+            --pkg-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/$V/icu-$V.pkg" \
+            --notes-file dist/RELEASE_NOTES.md --pkg "dist/icu-$V.pkg" --min-os 10.9.5
+      - name: Unsigned stand-in feed (never published)
+        if: needs.ver.outputs.publish != 'yes'
+        run: sh "$SHIPYARD_SCRIPTS/stand-in-feeds.sh" dist "${{ needs.ver.outputs.version }}"
       - name: Artifact conformance
-        env:
-          VER: ${{ steps.ver.outputs.ver }}
         run: |
-          sh "$SHIPYARD_SCRIPTS/artifact-facts.sh" "$BUILD/dist" "$VER" \
-            | sh "$SHIPYARD_SCRIPTS/check-artifact-conformance.sh"
-
-      - name: The feed is an upgrade on its line
-        if: steps.ver.outputs.publish == 'yes'
+          set -eu
+          facts="$(sh "$SHIPYARD_SCRIPTS/artifact-facts.sh" dist "${{ needs.ver.outputs.version }}")"
+          printf '%s\n' "$facts" | sh "$SHIPYARD_SCRIPTS/check-artifact-conformance.sh"
+      - name: The feed is an upgrade
+        if: needs.ver.outputs.publish == 'yes'
         env:
-          VER: ${{ steps.ver.outputs.ver }}
-        run: sh "$SHIPYARD_SCRIPTS/assert_appcast_upgradeable.sh" --appcast "$BUILD/dist/icu.xml" --version "$VER"
-
-      - name: The build must not have written into the source tree
-        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
-
+          GH_TOKEN: ${{ github.token }}
+        run: sh "$SHIPYARD_SCRIPTS/assert_appcast_upgradeable.sh" --appcast dist/icu.xml --version "${{ needs.ver.outputs.version }}"
+      - name: The smoke program the vm-test job runs against the installed dylib
+        run: |
+          set -eu
+          sh tests/smoke/build.sh "$DYLIB" "$RUNNER_TEMP/smoke/icu-smoke"
+          tar -cf "$RUNNER_TEMP/icu-smoke.tar" -C "$RUNNER_TEMP/smoke" icu-smoke
+      - name: The binaries the pkg was made from, for repackaging elsewhere
+        run: |
+          set -eu
+          tar -cf "$RUNNER_TEMP/icu-binaries.tar" -C "$(dirname "$(dirname "$DYLIB")")" out \
+            -C "$(dirname "$(dirname "$APP")")" updater/icu-updater.app updater/build-tools.txt
       - uses: actions/upload-artifact@v7
         with:
           name: icu
-          path: ${{ env.BUILD }}/dist/*
+          if-no-files-found: error
+          path: |
+            dist/*.pkg
+            dist/build-info-*.txt
+            dist/RELEASE_NOTES.md
+            dist/*.xml
+      - uses: actions/upload-artifact@v7
+        with:
+          name: icu-smoke
+          if-no-files-found: error
+          path: ${{ runner.temp }}/icu-smoke.tar
+      - uses: actions/upload-artifact@v7
+        with:
+          name: icu-binaries
+          if-no-files-found: error
+          path: ${{ runner.temp }}/icu-binaries.tar
+      - name: The build must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
+
+  vm-test:
+    needs: [ver, build]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository || startsWith(github.head_ref, 'renovate/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@v8
+        with: { name: icu, path: dist }
+      - uses: actions/download-artifact@v8
+        with: { name: icu-smoke, path: smoke }
+      - name: Unpack the smoke program
+        run: tar -xf smoke/icu-smoke.tar -C smoke
+      - name: Install the pkg on Mac OS X 10.9, run the smoke program against it and launch the updater
+        uses: Mavergreen/mavericks-vm@v1
+        env:
+          ICU_FULL_VERSION: ${{ needs.ver.outputs.version }}
+        with:
+          image-key: ${{ secrets.MAVERICKS_VM_KEY }}
+          envs: ICU_FULL_VERSION
+          copyback: false
+          run: |
+            set -eu
+            sw_vers
+            if [ -e /Library/Developer/CommandLineTools ]; then echo "this guest has the Command Line Tools"; else echo "this guest has no Command Line Tools"; fi
+            sudo -n true || { echo "the guest's user cannot sudo without a password, and installer needs root"; exit 1; }
+            sudo installer -pkg "dist/icu-$ICU_FULL_VERSION.pkg" -target /
+            /usr/local/bin/mavergreen check
+            sh tests/on-target.sh "$ICU_FULL_VERSION" smoke/icu-smoke
+            sh build/launch-updater.sh
 
   scan:
-    needs: [build]
-    if: always() && (needs.build.outputs.publish == 'yes')
-    permissions:
-      actions: read
-      contents: read
+    needs: [ver, build]
+    if: always() && needs.ver.outputs.publish == 'yes'
+    permissions: { actions: read, contents: read }
     uses: Mavergreen/shipyard/.github/workflows/scan-for-key.yml@v1
-    with:
-      artifact: icu
-    secrets:
-      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+    with: { artifact: icu }
+    secrets: { SPARKLE_PRIVATE_KEY: "${{ secrets.SPARKLE_PRIVATE_KEY }}" }
 
   publish:
-    needs: [build, scan]
-    if: needs.build.outputs.publish == 'yes'
-    permissions:
-      contents: write
+    needs: [ver, build, vm-test, scan]
+    if: needs.ver.outputs.publish == 'yes'
+    permissions: { contents: write }
     uses: Mavergreen/shipyard/.github/workflows/publish-release.yml@v1
-    with:
-      version: ${{ needs.build.outputs.ver }}
-      artifact: icu
+    with: { version: "${{ needs.ver.outputs.version }}", artifact: icu }
+
+  retry:
+    needs: [ver, publish]
+    if: always() && needs.publish.result == 'failure'
+    permissions: { contents: read, actions: write }
+    uses: Mavergreen/shipyard/.github/workflows/retry-release.yml@v1
+    with: { version: "${{ needs.ver.outputs.version }}" }
+
+  required:
+    name: required (release)
+    if: always()
+    needs: [ver, build, vm-test, scan, publish, retry]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Mavergreen/shipyard/.github/actions/required-gate@v1
+        with:
+          needs: ${{ toJSON(needs) }}
