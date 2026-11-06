@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- reads Mach-O headers with clang22's llvm-otool
+# platform: host-agnostic
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 MAVERICKS_ROOT="$(cd "$HERE/.." && pwd)"; export MAVERICKS_ROOT

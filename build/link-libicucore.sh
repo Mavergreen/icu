@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- links with clang22
+# platform: host-agnostic
 #   usage: link-libicucore.sh CLANG22 LIBDIR OUT
 set -eu
 MAVERICKS_ROOT="${MAVERICKS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"; export MAVERICKS_ROOT

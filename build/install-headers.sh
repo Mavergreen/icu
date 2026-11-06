@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- drives ICU's GNU make install rules
+# platform: host-agnostic
 #   usage: install-headers.sh BUILD-DIR INCLUDE-DIR
 #          Runs ICU's own install-headers rule in common and i18n (nothing is compiled and no ICU tool
 #          runs, so it works the same after a cross configure), then puts the configure-generated

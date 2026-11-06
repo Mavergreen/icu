@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- runs clang22, a Mach-O toolchain
+# platform: host-agnostic
 set -eu
 MAVERICKS_ROOT="${MAVERICKS_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"; export MAVERICKS_ROOT
 . "$MAVERICKS_ROOT/build/lib.sh"
@@ -10,21 +10,26 @@ icu_require_gnu_make
 MODE="$(icu_mode)"
 ROOT="$(icu_build_root)"
 MAJOR="$(icu_major)"
-JOBS="$(sysctl -n hw.ncpu)"
+JOBS="$(getconf _NPROCESSORS_ONLN)"
 
-rm -rf "$ROOT/host" "$ROOT/target"
+rm -rf "$ROOT/host" "$ROOT/target" "$ROOT/build-tools.txt"
 mkdir -p "$ROOT/host" "$ROOT/target"
 ROOT="$(cd "$ROOT" && pwd)"
 
 COMMON="--disable-renaming --enable-static --disable-shared --with-data-packaging=static --disable-tests --disable-samples --disable-extras --disable-icuio --disable-layoutex"
 
+TOOLS="$ROOT/build-tools.txt"
+printf 'build-make=%s\n' "$("$MAKE" --version | sed -n 1p)" > "$TOOLS"
 if [ "$MODE" = cross ]; then
+  if [ "$(uname -s)" = Linux ]; then HOST_OS=Linux HOST_CC=cc HOST_CXX=c++
+  else HOST_OS=macOS HOST_CC=/usr/bin/clang HOST_CXX=/usr/bin/clang++; fi
   (
     cd "$ROOT/host"
-    ac_cv_prog_PYTHON= CFLAGS= CXXFLAGS= LDFLAGS= CC=/usr/bin/clang CXX=/usr/bin/clang++ \
-      sh "$SRC/runConfigureICU" macOS $COMMON
+    ac_cv_prog_PYTHON= CFLAGS= CXXFLAGS= LDFLAGS= CC="$HOST_CC" CXX="$HOST_CXX" \
+      sh "$SRC/runConfigureICU" "$HOST_OS" $COMMON
     "$MAKE" -j"$JOBS"
   ) >&2
+  printf 'build-host-cc=%s\nbuild-host-cxx=%s\n' "$("$HOST_CC" --version | sed -n 1p)" "$("$HOST_CXX" --version | sed -n 1p)" >> "$TOOLS"
   EXTRA="--build=$(sh "$SRC/config.guess") --host=x86_64-apple-darwin13 --with-cross-build=$ROOT/host --disable-tools"
 else
   EXTRA=""

@@ -1,6 +1,6 @@
 #!/bin/sh
-# platform: macOS-only -- pkgutil expands the product archive and lsbom lists the component's payload
-#   usage: package-test.sh PKG DYLIB
+# platform: host-agnostic
+#   usage: package-test.sh [PKG DYLIB]     (default: the one dist/icu-*.pkg, and build/build.sh's dylib)
 #          The pkg must be named icu-<version>.pkg and its icu component must carry exactly the dylib,
 #          the include/unicode headers that sit beside it (uconfig.h defining U_DISABLE_RENAMING 1), ICU's
 #          LICENSE and the README under share/doc/icu, the mavergreen.plist manifest, and the updater
@@ -10,9 +10,15 @@
 #          byte-identical to the one that was tested.
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
+MAVERICKS_ROOT="$(cd "$HERE/.." && pwd)"; export MAVERICKS_ROOT
 . "$HERE/helpers/assert.sh"
-PKG="${1:-}"; DYLIB="${2:-}"
-[ -n "$PKG" ] && [ -n "$DYLIB" ] || { echo "package-test: usage: package-test.sh PKG DYLIB" >&2; exit 77; }
+. "$MAVERICKS_ROOT/build/lib.sh"
+if [ $# -ge 2 ]; then PKG="$1"; DYLIB="$2"; else
+  set -- "$MAVERICKS_ROOT"/dist/icu-*.pkg
+  [ -f "$1" ] || { echo "package-test: not packaged (no dist/icu-*.pkg) -- run build/build.sh, build/build-updater.sh, then packaging/build-pkg.sh; skipping" >&2; exit 77; }
+  [ "$#" -eq 1 ] || { echo "package-test: dist/ holds $# icu pkgs; one build makes one" >&2; exit 1; }
+  PKG="$1"; DYLIB="$(icu_build_root)/out/libicucore.dylib"
+fi
 
 case "$(basename "$PKG")" in icu-[0-9]*.pkg) _n=ok ;; *) _n=bad ;; esac
 a_eq ok "$_n" "the pkg is named icu-<version>.pkg"
@@ -20,16 +26,17 @@ a_file_exists "the pkg exists" "$PKG"
 a_file_exists "the dylib exists" "$DYLIB"
 
 t_tmp T
-pkgutil --expand "$PKG" "$T/x"
-C="$T/x/icu-component.pkg"
-a_file_exists "the product archive carries the icu component" "$C/Bom"
-lsbom -s -f "$C/Bom" | sed 's|^\./||' > "$T/bom"
+SD="$(sh "$SHIPYARD/fetch_stevedore.sh")"
+"$SD" expand "$PKG" "$T/x" >/dev/null
+C="$(grep -l 'identifier="dev.mavergreen.icu"' "$T"/x/*/PackageInfo | sed 1q)"
+a_eq 1 "$([ -n "$C" ] && echo 1 || echo 0)" "the product archive carries the icu component"
+C="$(dirname "$C")"
+mkdir "$T/out"
+( cd "$T/out" && gzip -dc < "$C/Payload" | cpio -id --quiet 2>/dev/null )
+( cd "$T/out" && find . -type f | sed 's|^\./||' ) > "$T/bom"
 a_eq 1 "$(grep -c 'icu-updater\.app/Contents/Frameworks/Sparkle\.framework/Versions/A/Sparkle$' "$T/bom")" "the Sparkle binary is in the payload"
-lsbom "$C/Bom" | sed 's|^\./||' > "$T/modes"
-a_eq "" "$(awk -F'\t' '{ m = $2; o = substr(m, length(m)) + 0 }
-  m ~ /^10/ && int(o / 4) % 2 == 0 { print $1 " " m }
-  m ~ /^4/ && o % 2 == 0 { print $1 " " m }' "$T/modes")" "every payload file is world-readable and every directory world-searchable"
-a_eq "100755" "$(awk -F'\t' '$1 == "usr/local/mavergreen/icu/lib/libicucore.dylib" { print $2 }' "$T/modes")" "the dylib keeps the mode it was built with"
+a_eq "" "$(cd "$T/out" && { find . -type f ! -perm -004; find . -type d ! -perm -001; })" "every payload file is world-readable and every directory world-searchable"
+a_eq "./usr/local/mavergreen/icu/lib/libicucore.dylib" "$(cd "$T/out" && find ./usr/local/mavergreen/icu/lib/libicucore.dylib -perm 0755)" "the dylib keeps the mode it was built with"
 grep -v '/Sparkle\.framework/' "$T/bom" | LC_ALL=C sort > "$T/payload"
 a_file_exists "the built include dir has uconfig.h" "$(dirname "$DYLIB")/include/unicode/uconfig.h"
 (cd "$(dirname "$DYLIB")/include" && find unicode -type f | sed 's|^|usr/local/mavergreen/icu/include/|') > "$T/headers"
@@ -47,10 +54,14 @@ usr/local/mavergreen/icu/mavergreen.plist
 usr/local/mavergreen/icu/share/doc/icu/LICENSE
 usr/local/mavergreen/icu/share/doc/icu/README.md" "$(cat "$T/payload-rest")" "the payload is the dylib, docs, manifest, updater and its LaunchAgent"
 
-mkdir "$T/out"
-( cd "$T/out" && gzip -dc < "$C/Payload" | cpio -id 2>/dev/null )
 a_file_exists "the dylib extracts" "$T/out/usr/local/mavergreen/icu/lib/libicucore.dylib"
 cmp "$T/out/usr/local/mavergreen/icu/lib/libicucore.dylib" "$DYLIB" && _s=same || _s=differs
 a_eq same "$_s" "the packaged dylib is byte-identical to the tested one"
 a_eq 1 "$(grep -c '^#define U_DISABLE_RENAMING 1$' "$T/out/usr/local/mavergreen/icu/include/unicode/uconfig.h")" "the packaged uconfig.h defines U_DISABLE_RENAMING 1"
+
+INFO="$(dirname "$PKG")/build-info-release.txt"
+a_file_exists "packaging writes build-info-release.txt beside the pkg" "$INFO"
+for k in build-make updater-cmake updater-build-tool; do
+  a_eq 1 "$(grep -c "^$k=." "$INFO")" "build-info names $k, a tool that built what ships"
+done
 a_done

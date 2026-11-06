@@ -1,5 +1,5 @@
 #!/bin/sh
-# platform: macOS-only -- reads the x86_64 Mach-O libicucore.dylib
+# platform: host-agnostic
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 MAVERICKS_ROOT="$(cd "$HERE/.." && pwd)"; export MAVERICKS_ROOT
