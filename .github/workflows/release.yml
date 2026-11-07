@@ -207,6 +207,11 @@ jobs:
             sw_vers
             if [ -e /Library/Developer/CommandLineTools ]; then echo "this guest has the Command Line Tools"; else echo "this guest has no Command Line Tools"; fi
             sudo -n true || { echo "the guest's user cannot sudo without a password, and installer needs root"; exit 1; }
+            if [ -x /usr/local/bin/mavergreen ] && [ -f /usr/local/mavergreen/icu/mavergreen.plist ]; then sudo /usr/local/bin/mavergreen uninstall icu; fi
+            if pkgutil --pkg-info dev.mavergreen.icu >/dev/null 2>&1; then sudo pkgutil --forget dev.mavergreen.icu; fi
+            if [ -e /usr/local/mavergreen/icu ] || pkgutil --pkg-info dev.mavergreen.icu >/dev/null 2>&1; then
+              echo "an icu the image carried survived its removal, so on-target.sh could not prove this run's pkg installed"; exit 1
+            fi
             sudo installer -pkg "dist/icu-$ICU_FULL_VERSION.pkg" -target /
             /usr/local/bin/mavergreen check
             sh tests/on-target.sh "$ICU_FULL_VERSION" smoke/icu-smoke
