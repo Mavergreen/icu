@@ -24,6 +24,7 @@ LICENSE_SRC="$(dirname "$DYLIB")/LICENSE"
 for f in "$(dirname "$DYLIB")/build-tools.txt" "$(dirname "$APP")/build-tools.txt"; do
   [ -s "$f" ] || { echo "build-pkg: no $f -- the build tools that built what ships must be recorded" >&2; exit 1; }
 done
+rm -f "$OUTDIR"/icu-*.pkg
 # platform: without it, cp on a Mac carries AppleDouble ._ files and extended attributes into the payload
 COPYFILE_DISABLE=1; export COPYFILE_DISABLE
 work=$(mktemp -d "${TMPDIR:-/tmp}/icu-pkg.XXXXXX")
