@@ -15,7 +15,8 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 MAVERICKS_ROOT=$REPO; export MAVERICKS_ROOT
 . "$REPO/build/lib.sh"
 [ -f "$DYLIB" ] || { echo "build-pkg: no $DYLIB" >&2; exit 1; }
-[ -d "$APP" ] || { echo "build-pkg: no updater $APP; run build/build-updater.sh" >&2; exit 1; }
+[ -d "$APP" ] || { echo "build-pkg: $APP does not exist -- no updater app to package; run build/build-updater.sh" >&2; exit 1; }
+[ -x "$APP/Contents/MacOS/icu-updater" ] || { echo "build-pkg: $APP has no executable Contents/MacOS/icu-updater -- not a built updater" >&2; exit 1; }
 HEADERS_SRC="$(dirname "$DYLIB")/include/unicode"
 [ -f "$HEADERS_SRC/uconfig.h" ] || { echo "build-pkg: no $HEADERS_SRC; run build/build.sh" >&2; exit 1; }
 LICENSE_SRC="$(dirname "$DYLIB")/LICENSE"
