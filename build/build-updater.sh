@@ -18,7 +18,7 @@ rm -rf "$W/updater"
 "$SC" -S "$MAVERICKS_ROOT" -B "$W/updater" -DCMAKE_TOOLCHAIN_FILE="$SY/MavericksToolchain.cmake" \
   -DMavericksShipyard_DIR="$SY" -DCMAKE_OSX_ARCHITECTURES=x86_64 \
   -DCMAKE_OBJC_COMPILER="$CL/bin/clang" -DCMAKE_OBJC_COMPILER_TARGET=x86_64-apple-macos10.9 \
-  -DCMAKE_OBJC_FLAGS=--no-default-config -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -DPKG_VERSION="$VER" >&2
+  -DCMAKE_OBJC_FLAGS=--no-default-config -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld --ld-path=$CL/bin/ld64.lld" -DPKG_VERSION="$VER" >&2
 "$SC" --build "$W/updater" >&2
 sh "$MAVERICKS_ROOT/build/build-tools.sh" "$W/updater" updater > "$W/updater/build-tools.txt"
 echo "$W/updater/icu-updater.app"
