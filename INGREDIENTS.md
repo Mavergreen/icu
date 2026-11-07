@@ -25,6 +25,15 @@ builds natively, with no host stage. The updater is configured by the host's `cm
 `shipyard-cmake` on a Mac, and compiled by clang22 for x86_64 10.9. Packaging runs on shipyard's stevedore
 seams, so CI builds, tests, packages and signs on Linux.
 
+ICU builds without link-time optimisation. Since ICU 79, `runConfigureICU macOS` adds `-flto`; both stages
+append `-fno-lto`, so ICU's archives hold x86_64 Mach-O objects, and `tests/no-lto-test.sh` checks that they do.
+clang22's lld links the LTO build correctly: measured on 79.1 on the 10.9 box, the exports and the imports
+were identical, the compat guard was clean and the smoke passed. But the dylib was 0.9 MB larger, and the
+single-threaded LTO link took 3 min 50 s instead of 1 s, so a native build took 14 minutes instead of 5.
+The cost is upstream's `-O2 -flto` speed-up on macOS, which nobody has measured for this dylib. Revisit if a
+consumer finds ICU on its hot path, or if upstream publishes a measured gain for macOS: then measure ThinLTO
+(`-flto=thin`), whose link runs in parallel.
+
 ## Running what ships
 
 Nothing shipped runs on the Linux build host. The `vm-test` job boots Mac OS X 10.9.5 with

@@ -25,7 +25,7 @@ if [ "$MODE" = cross ]; then
   else HOST_OS=macOS HOST_CC=/usr/bin/clang HOST_CXX=/usr/bin/clang++; fi
   (
     cd "$ROOT/host"
-    ac_cv_prog_PYTHON= CFLAGS= CXXFLAGS= LDFLAGS= CC="$HOST_CC" CXX="$HOST_CXX" \
+    ac_cv_prog_PYTHON= CFLAGS=-fno-lto CXXFLAGS=-fno-lto LDFLAGS= CC="$HOST_CC" CXX="$HOST_CXX" \
       sh "$SRC/runConfigureICU" "$HOST_OS" $COMMON
     "$MAKE" -j"$JOBS"
   ) >&2
@@ -37,7 +37,7 @@ fi
 
 SDK="$(sh "$SHIPYARD/fetch_sdk.sh")"
 FL="--no-default-config --target=x86_64-apple-macos10.9 -mmacosx-version-min=10.9 -isysroot $SDK"
-CF="$FL -isystem $CLANG22/include/mavericks-compat -isystem $CLANG22/include/recaulk"
+CF="$FL -isystem $CLANG22/include/mavericks-compat -isystem $CLANG22/include/recaulk -fno-lto"
 
 (
   cd "$ROOT/target"
