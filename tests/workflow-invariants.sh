@@ -8,6 +8,7 @@ code="$(grep -v '^[[:space:]]*#' "$R")"
 line_of() { printf '%s\n' "$code" | grep -n -e "$1" | sed -n '1s/:.*//p'; }
 has() { printf '%s\n' "$code" | grep -q -e "$1"; }
 job() { printf '%s\n' "$code" | awk -v j="$1" '$0 ~ "^  "j":"{f=1;print;next} /^  [a-z][a-z-]*:$/{f=0} f'; }
+step_if() { printf '%s\n' "$1" | awk -v p="$2" '/^      - /{if(m)print i; m=0; i=""} /^      - if: |^        if: /{i=$0; sub(/^ *(- )?if: /,"",i)} index($0,p){m=1} END{if(m)print i}'; }
 
 printf '%s\n' "$code" | awk '/^  pull_request:/{f=1;next} f&&/branches:/{print;exit}' | grep -q '\[main\]' \
   || fail "release.yml must build pull requests to main: Renovate's automerge waits on that check"
@@ -39,6 +40,10 @@ bsteps="$(printf '%s\n' "$keyed" | awk '$1 == "build:" {print $2}' | sort -u)"
   || fail "in the build job the signing key belongs in the signing step's env alone, the step that runs sign_and_appcast.sh (key in steps at lines '$bsteps', signing step at '$signstep')"
 printf '%s\n' "$build" | grep -q 'LIPO=$CL/bin/llvm-lipo' || fail "conformance must read Mach-O with clang22's llvm-lipo and llvm-otool"
 printf '%s\n' "$build" | grep -q 'name: icu-binaries' || fail "the build must upload the dylib, headers and updater it packaged, so another host can repackage them byte for byte"
+bi="$(step_if "$build" 'icu-binaries.tar')"
+[ "$bi" = "github.event_name == 'workflow_dispatch'
+github.event_name == 'workflow_dispatch'" ] \
+  || fail "the icu-binaries tar and its upload run on workflow_dispatch alone, a release or a conversion proof dispatched on a branch, not on every push (got: $bi)"
 printf '%s\n' "$build" | grep -q 'name: icu-smoke' || fail "the build must upload the smoke program vm-test runs on 10.9"
 has 'sh build/build.sh' || fail "release.yml must build libicucore.dylib"
 has 'sh build/build-updater.sh' || fail "release.yml must build the updater with clang22"
