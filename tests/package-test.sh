@@ -13,7 +13,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 MAVERICKS_ROOT="$(cd "$HERE/.." && pwd)"; export MAVERICKS_ROOT
 . "$HERE/helpers/assert.sh"
 . "$MAVERICKS_ROOT/build/lib.sh"
+BUILT_HERE=no
 if [ $# -ge 2 ]; then PKG="$1"; DYLIB="$2"; else
+  BUILT_HERE=yes
   set -- "$MAVERICKS_ROOT"/dist/icu-*.pkg
   [ -f "$1" ] || { echo "package-test: not packaged (no dist/icu-*.pkg) -- run build/build.sh, build/build-updater.sh, then packaging/build-pkg.sh; skipping" >&2; exit 77; }
   [ "$#" -eq 1 ] || { echo "package-test: dist/ holds $# icu pkgs; one build makes one" >&2; exit 1; }
@@ -62,7 +64,16 @@ a_eq 1 "$(grep -c '^#define U_DISABLE_RENAMING 1$' "$T/out/usr/local/mavergreen/
 
 INFO="$(dirname "$PKG")/build-info-release.txt"
 a_file_exists "packaging writes build-info-release.txt beside the pkg" "$INFO"
-for k in build-make updater-cmake updater-build-tool; do
+TOOLS="$(dirname "$DYLIB")/build-tools.txt"
+a_file_exists "build-tools.txt beside the dylib records the tools that built it" "$TOOLS"
+while IFS= read -r l; do
+  a_eq "$(printf '%s' "${l#*=}" | tr -s '[:space:]' '_')" "$(sed -n "s/^${l%%=*}=//p" "$INFO")" "build-info carries ${l%%=*} as build-tools.txt beside the dylib records it"
+done < "$TOOLS"
+keys="build-make updater-cmake updater-build-tool"
+if [ "$BUILT_HERE" = yes ] && [ "$(icu_mode)" = cross ] || grep -q '^build-host-' "$TOOLS"; then
+  keys="$keys build-host-cc build-host-cxx"
+fi
+for k in $keys; do
   a_eq 1 "$(grep -c "^$k=." "$INFO")" "build-info names $k, a tool that built what ships"
 done
 a_done
